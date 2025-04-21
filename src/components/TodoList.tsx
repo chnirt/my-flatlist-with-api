@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useCallback, useMemo} from 'react';
 import {
   View,
   FlatList,
@@ -28,34 +28,38 @@ const TodoList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   // Utility function for delay
-  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  const delay = useCallback(
+    (ms: number) => new Promise(resolve => setTimeout(resolve, ms)),
+    [],
+  );
 
-  // Fetch todos from API with a minimum loading time
-  const fetchTodos = async (page: number, search: string = '') => {
-    console.log('🚀 ~ fetchTodos ~ fetchTodos:');
-    setLoading(true);
-    const MIN_LOADING_TIME = 1000; // thời gian tối thiểu hiển thị loading (1 giây)
+  const fetchTodos = useCallback(
+    async (page: number, search: string = '') => {
+      setLoading(true);
+      const MIN_LOADING_TIME = 1000;
 
-    try {
-      // Fetch data and delay concurrently
-      const [response] = await Promise.all([
-        axios.get<Todo[]>(
-          `https://jsonplaceholder.typicode.com/todos?_limit=20&_page=${page}&q=${search}`,
-        ),
-        delay(MIN_LOADING_TIME),
-      ]);
+      try {
+        // Fetch data and delay concurrently
+        const [response] = await Promise.all([
+          axios.get<Todo[]>(
+            `https://jsonplaceholder.typicode.com/todos?_limit=20&_page=${page}&q=${search}`,
+          ),
+          delay(MIN_LOADING_TIME),
+        ]);
 
-      setHasMore(response.data.length > 0);
-      setTodos(prev =>
-        page === 1 ? response.data : [...prev, ...response.data],
-      );
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+        setHasMore(response.data.length > 0);
+        setTodos(prev =>
+          page === 1 ? response.data : [...prev, ...response.data],
+        );
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [delay],
+  );
 
   // Initial load and page/term change
   useEffect(() => {
@@ -64,43 +68,53 @@ const TodoList: React.FC = () => {
   }, [pageNum, searchTerm]);
 
   // Load more todos with debounce
-  const loadMoreTodos = debounce(() => {
-    if (hasMore && !loading) {
-      setPageNum(prevPage => prevPage + 1);
-    }
-  }, 1000);
+  const loadMoreTodos = useMemo(
+    () =>
+      debounce(() => {
+        if (hasMore && !loading) {
+          setPageNum(prevPage => prevPage + 1);
+        }
+      }, 1000),
+    [hasMore, loading],
+  );
 
   // Pull to refresh
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     setPageNum(1);
     fetchTodos(1, searchTerm);
-  };
+  }, [fetchTodos, searchTerm]);
 
   // Handle search with debounce
-  const handleSearch = debounce((text: string) => {
-    setSearchTerm(text);
-    setPageNum(1); // Reset page when searching
-  }, 500);
-
-  // Render item function
-  const renderItem = ({item}: {item: Todo}) => (
-    <View style={styles.itemContainer}>
-      <Text style={styles.itemText}>
-        {item.id}. {item.title}
-      </Text>
-    </View>
+  const handleSearch = useMemo(
+    () =>
+      debounce((text: string) => {
+        setSearchTerm(text);
+        setPageNum(1);
+      }, 500),
+    [],
   );
 
+  // Render item function
+  const renderItem = useCallback(({item}: {item: Todo}) => {
+    return (
+      <View style={styles.itemContainer}>
+        <Text style={styles.itemText}>
+          {item.id}. {item.title}
+        </Text>
+      </View>
+    );
+  }, []);
+
   // Define layout for FlatList optimization
-  const getItemLayout = (
-    data: ArrayLike<Todo> | null | undefined,
-    index: number,
-  ) => ({
-    length: ITEM_HEIGHT,
-    offset: ITEM_HEIGHT * index,
-    index,
-  });
+  const getItemLayout = useCallback(
+    (_: ArrayLike<Todo> | null | undefined, index: number) => ({
+      length: ITEM_HEIGHT,
+      offset: ITEM_HEIGHT * index,
+      index,
+    }),
+    [],
+  );
 
   return (
     <View style={styles.container}>
